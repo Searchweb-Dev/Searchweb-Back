@@ -4,7 +4,7 @@
 > - **버전:** v0.1.0 (Draft)
 > - **작성일:** 2026-04-14
 > - **관련 화면:** `/my-links`
-> - **관련 문서:** [SearchWeb PRD](./01.%20searchweb_PRD.md), [KPI 측정 설계](./02.%20kpi_measurement_design.md), [Frontend Architecture](../Fontend/01.%20frontend_architecture.md)
+- **관련 문서:** [SearchWeb PRD](../../Searchweb_PRD.md), [KPI 측정 설계](../../metrics/kpi_easurement.md), [Frontend Architecture](../../../Fontend/01. frontend_architecture.md)
 > - **문서 목적:** `/my-links` 검색 기능의 UX 정책, 결과 구조, 데이터 규칙, 구현 범위를 정의한다.
 
 <br>
