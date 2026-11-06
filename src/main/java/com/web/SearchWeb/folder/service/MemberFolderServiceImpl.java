@@ -36,6 +36,13 @@ public class MemberFolderServiceImpl implements MemberFolderService {
     @Override
     @Transactional
     public Long create(Long memberId, Long parentFolderId, String folderName, String description) {
+        return create(memberId, parentFolderId, folderName, description, false);
+    }
+
+    @Override
+    @Transactional
+    public Long create(Long memberId, Long parentFolderId, String folderName, String description, boolean pinned) {
+        if (pinned && parentFolderId != null) throw new FolderException(FolderErrorCode.INVALID_PIN_TARGET);
         String normalizedFolderName = normalizeFolderName(folderName);
         String normalizedDescription = normalizeDescription(description);
 
@@ -70,9 +77,34 @@ public class MemberFolderServiceImpl implements MemberFolderService {
             .folderName(normalizedFolderName)
             .description(normalizedDescription)
             .createdByMemberId(memberId)
+            .pinned(pinned)
             .build();
 
         return memberFolderJpaRepository.save(folder).getMemberFolderId();
+    }
+
+    @Override
+    @Transactional
+    public MemberFolder setPinned(Long memberId, Long folderId, boolean pinned) {
+        MemberFolder folder = memberFolderJpaRepository.findByIdForUpdate(folderId)
+            .orElseThrow(() -> new FolderException(FolderErrorCode.FOLDER_NOT_FOUND));
+        if (folder.isDeleted()) throw new FolderException(FolderErrorCode.FOLDER_NOT_FOUND);
+        validateOwner(memberId, folder.getOwnerMemberId());
+        if (folder.getParentFolderId() != null ||
+            !(folder.getFolderType() == FolderType.CUSTOM || folder.getFolderType() == FolderType.UNORGANIZED)) {
+            throw new FolderException(FolderErrorCode.INVALID_PIN_TARGET);
+        }
+        folder.setPinned(pinned);
+        return folder;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MemberFolder> listPinned(Long memberId) {
+        return listRootFolders(memberId, memberId).stream()
+            .filter(MemberFolder::isPinned)
+            .filter(f -> f.getFolderType() == FolderType.CUSTOM || f.getFolderType() == FolderType.UNORGANIZED)
+            .collect(Collectors.toList());
     }
 
     private String normalizeFolderName(String folderName) {

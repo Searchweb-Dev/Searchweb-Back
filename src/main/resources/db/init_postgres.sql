@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS "member_folder" (
   "folder_name" varchar(80) NOT NULL,
   "description" text,
   "folder_type" varchar(20) DEFAULT 'CUSTOM' NOT NULL,
+  "is_pinned" boolean DEFAULT false NOT NULL,
   "created_at" timestamptz DEFAULT now() NOT NULL,
   "updated_at" timestamptz DEFAULT now() NOT NULL,
   "deleted_at" timestamptz,
@@ -575,6 +576,7 @@ CREATE INDEX IF NOT EXISTS idx_refresh_token_hash ON "refresh_token" ("token_has
 CREATE INDEX IF NOT EXISTS idx_refresh_token_expires ON "refresh_token" ("expires_at");
 
 CREATE INDEX IF NOT EXISTS idx_member_folder_owner ON "member_folder" ("owner_member_id");
+CREATE INDEX IF NOT EXISTS idx_member_folder_owner_pinned ON "member_folder" ("owner_member_id", "is_pinned");
 CREATE INDEX IF NOT EXISTS idx_member_folder_parent ON "member_folder" ("parent_folder_id");
 CREATE UNIQUE INDEX IF NOT EXISTS uq_member_folder_parent_name
   ON "member_folder" ("owner_member_id", "parent_folder_id", "folder_name")

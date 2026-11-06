@@ -6,6 +6,9 @@ import java.util.List;
 public interface MemberFolderService {
 
     Long create(Long memberId, Long parentFolderId, String folderName, String description);
+    Long create(Long memberId, Long parentFolderId, String folderName, String description, boolean pinned);
+    MemberFolder setPinned(Long memberId, Long folderId, boolean pinned);
+    List<MemberFolder> listPinned(Long memberId);
 
     MemberFolder get(Long memberId, Long memberFolderId);
 
