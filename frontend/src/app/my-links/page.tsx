@@ -1,10 +1,11 @@
 'use client';
 
 import { FolderCard } from '@/components/my-links/FolderCard';
+import { PinnedFolderCard } from '@/components/my-links/PinnedFolderCard';
 import { RightPanel } from '@/components/my-links/RightPanel';
 import { useUIStore } from '@/lib/store/uiStore';
 import { useStore } from '@/lib/hooks/useStore';
-import { useFolders } from '@/lib/api/folderApi';
+import { useFolders, usePinnedFolders } from '@/lib/api/folderApi';
 import { useFolderStore, type SearchScope } from '@/lib/store/folderStore';
 import { useAuthStore } from '@/lib/store/authStore';
 import { SortDropdown, SortOption } from '@/components/ui/SortDropdown';
@@ -14,7 +15,10 @@ import { FOLDER_TYPE, type FolderResponse } from '@/lib/types/folder';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { compareFolders } from '@/lib/utils/folderUtils';
-import { motion } from 'framer-motion';
+import { myFolderHiddenIds, withoutPinned } from '@/lib/utils/pinnedDisplay';
+import { useFlipLayout } from '@/lib/hooks/useFlipLayout';
+import { usePinnedScrollArea } from '@/lib/hooks/usePinnedScrollArea';
+import { pinnedAreaMaxHeight } from '@/lib/utils/pinnedScroll';
 import { ANALYTICS_EVENTS, trackEvent } from '@/lib/analytics';
 
 export default function MyLinksPage() {
@@ -161,12 +165,13 @@ export default function MyLinksPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, [toggleRightPanel]);
 
-  const { data: folders, isLoading: isFoldersLoading, error } = useFolders(memberId); // 전체 폴더 목록 조회
+  const { data: folders, isLoading: isFoldersLoading, error, refetch: refetchFolders } = useFolders(memberId); // 전체 폴더 목록 조회
+  const { data: serverPinned, isLoading: isPinnedLoading, error: pinnedError, refetch: refetchPinned } = usePinnedFolders(memberId);
 
   // 인증 또는 폴더 로딩 중
   const isLoading = isAuthInitializing || isFoldersLoading;
   const isPopupMode = panelMode === 'drawer';
-  const pinnedFolders = folders?.slice(0, isPopupMode ? 6 : 5) ?? [];
+
   // TODO: 하위 폴더(Subfolder) 기능 도입 시, 루트 폴더 단순 reduce 합산은 하위 폴더의 북마크를 누락하여 과소 집계(underreport)될 수 있음.
   // 추후 하위 폴더 구현 시 전체 북마크 응답(useBookmarks totalCount) 또는 집계 API 응답값 기반으로 totalLinkCount 산출 방식 변경 필요.
   const totalLinkCount = useMemo(() => (folders ?? []).reduce((total, folder) => total + folder.bookmarkCount, 0), [folders]);
@@ -178,6 +183,7 @@ export default function MyLinksPage() {
     description: 'All Links',
     bookmarkCount: totalLinkCount,
     folderType: FOLDER_TYPE.CUSTOM,
+    pinned: false,
     createdAt: '',
     updatedAt: ''
   }), [totalLinkCount, memberId]);
@@ -245,6 +251,27 @@ export default function MyLinksPage() {
   const unorganizedFolder = folders?.find(f => f.folderType === FOLDER_TYPE.UNORGANIZED);
   const unorganizedFolderId = unorganizedFolder?.memberFolderId;
 
+  // Pinned selection is server-owned; display current names/counts from the same root entities.
+  const pinnedFolders = useMemo(() => {
+    if (!serverPinned || !folders) return [];
+    const current = new Map(folders.map(folder => [folder.memberFolderId, folder]));
+    return serverPinned.map(confirmed => ({ ...current.get(confirmed.memberFolderId), ...confirmed,
+      // Prefer the current root entity for the displayed name/count, but GET pinned owns membership.
+      folderName: current.get(confirmed.memberFolderId)?.folderName ?? confirmed.folderName,
+      bookmarkCount: current.get(confirmed.memberFolderId)?.bookmarkCount ?? confirmed.bookmarkCount,
+      pinned: true,
+    })).sort((a, b) => compareFolders(a, b, folderSort));
+  }, [serverPinned, folders, folderSort]);
+  const pinnedSectionState = isAuthInitializing || isFoldersLoading || isPinnedLoading ? 'loading'
+    : error || pinnedError ? 'error' : 'ready';
+  // Single exposure: a folder rendered in Pinned is hidden from My Folder (display only).
+  const hiddenFromMyFolder = useMemo(() => myFolderHiddenIds(pinnedSectionState, pinnedFolders, folders),
+    [pinnedSectionState, pinnedFolders, folders]);
+  const flipRootRef = useRef<HTMLDivElement>(null);
+  useFlipLayout(flipRootRef);
+  const pinnedScrollRef = useRef<HTMLDivElement>(null);
+  const onPinnedAreaFocus = usePinnedScrollArea(pinnedScrollRef);
+
   // 북마크 데이터 조회 조건 결정:
   // 1. 전체 또는 링크 범위 검색 중이거나
   // 2. 오늘 저장 필터가 활성화된 경우
@@ -280,10 +307,11 @@ export default function MyLinksPage() {
   // 1. 검색/필터링 결과 폴더 목록 메모이제이션
   const processedSearchResultFolders = useMemo(() => {
     if (!folders) return [];
+    const visibleFolders = withoutPinned(folders, hiddenFromMyFolder);
     
     // 필터링 로직 수행
     let filtered = isSearching
-      ? folders.filter((folder) => {
+      ? visibleFolders.filter((folder) => {
           const queryLower = searchQuery.toLowerCase();
           
           // 검색 범위에 따른 매칭 확인
@@ -295,7 +323,7 @@ export default function MyLinksPage() {
             
           return matchFolderName || matchBookmark;
         })
-      : [...folders];
+      : [...visibleFolders];
 
     // 추가 필터링 (오늘 저장, 안 읽음, 미분류)
     if (savedTodayFilter) {
@@ -310,12 +338,12 @@ export default function MyLinksPage() {
 
     // 최종 정렬 적용
     return [...filtered].sort((a, b) => compareFolders(a, b, folderSort));
-  }, [folders, isSearching, searchQuery, searchScope, matchingFolderIdsSet, savedTodayFilter, unreadFilter, unorganizedFilter, folderSort]);
+  }, [folders, hiddenFromMyFolder, isSearching, searchQuery, searchScope, matchingFolderIdsSet, savedTodayFilter, unreadFilter, unorganizedFilter, folderSort]);
 
-  // 2. 대시보드용 전체 폴더 목록 메모이제이션 (정렬만 적용)
+  // 2. 대시보드용 My Folder 목록 메모이제이션 (고정 폴더 제외 + 기존 정렬)
   const processedAllFolders = useMemo(() => {
-    return (folders ?? []).slice().sort((a, b) => compareFolders(a, b, folderSort));
-  }, [folders, folderSort]);
+    return withoutPinned(folders ?? [], hiddenFromMyFolder).slice().sort((a, b) => compareFolders(a, b, folderSort));
+  }, [folders, hiddenFromMyFolder, folderSort]);
 
   const searchResultFolderCount = processedSearchResultFolders.length;
   const matchedLinksCount = allBookmarks?.bookmarks?.length ?? 0;
@@ -412,7 +440,7 @@ export default function MyLinksPage() {
         isPopupMode && "px-8 py-4 pb-28 tablet-lg:px-12 tablet-lg:py-5 tablet-lg:pb-8 xl:px-20 2xl:px-28"
       )}>
         {/* [분기 1] 팝업 모드일 때 검색바, 태그 필터, 메인 폴더 목록 전체를 단 하나의 통합 메인 카드 영역으로 감쌈 */}
-        <div className={cn(
+        <div ref={flipRootRef} className={cn(
           "w-full transition-all duration-300",
           isPopupMode ? "max-w-[1080px] mx-auto min-h-full" : "max-w-[1400px]"
         )}>
@@ -531,6 +559,33 @@ export default function MyLinksPage() {
           </div>
         </div>
 
+        {/* 검색/필터와 무관하게 서버에서 확정된 고정 폴더를 표시 */}
+        <section className={cn(isPopupMode ? 'mb-5' : 'mb-10 sm:mb-5')} aria-label="Pinned folders">
+          <h2 className="text-xs font-bold text-gray-800 dark:text-gray-100 ml-1 mb-2">Pinned</h2>
+          {pinnedSectionState === 'loading' ? (
+            <div role="status" className="text-xs text-gray-500">고정 폴더를 불러오는 중...</div>
+          ) : pinnedSectionState === 'error' ? (
+            <div role="alert" className="text-xs text-rose-500">고정 폴더를 불러오지 못했습니다.
+              <button type="button" onClick={() => { refetchFolders(); refetchPinned(); }} className="ml-2 underline">다시 시도</button>
+            </div>
+          ) : pinnedFolders.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-300 p-4 text-xs text-gray-500">자주 찾는 폴더를 고정해보세요 📌</div>
+          ) : (
+            // Max two card rows; from the third row on the list scrolls inside this area only.
+            // -m-1/p-1: ring/shadow room at the scroll edge without shifting the layout.
+            <div ref={pinnedScrollRef} onFocus={onPinnedAreaFocus} data-pinned-scroll="" data-flip-clip=""
+              role="group" aria-label="Pinned folder list" style={{ maxHeight: pinnedAreaMaxHeight(isPopupMode) }}
+              className="-m-1 overflow-y-auto overflow-x-hidden p-1 [scrollbar-width:thin] [scrollbar-color:#CBD5E1_transparent] dark:[scrollbar-color:#4B5563_transparent]">
+              <div className="flex flex-wrap gap-2">
+                {pinnedFolders.map((folder, idx) => (
+                  <PinnedFolderCard key={folder.memberFolderId} folder={folder} flipId={folder.memberFolderId}
+                    color={PINNED_COLORS[idx % PINNED_COLORS.length]} popup={isPopupMode}
+                    onOpen={() => handleFolderBadgeClick(folder)} />
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
         {/* 검색어 있음 또는 필터 활성화: 폴더 카드 그리드로 검색 결과 표시 */}
         {isShowingFiltered && (
           <div>
@@ -541,7 +596,7 @@ export default function MyLinksPage() {
               </h2>
             </div>
             
-            <div className={cn("grid grid-cols-2 md:grid-cols-3 gap-2", isPopupMode ? "tablet-lg:grid-cols-5 xl:grid-cols-6" : "lg:grid-cols-3")}>
+            <div role="group" aria-label="Folder search results" className={cn("grid grid-cols-2 md:grid-cols-3 gap-2", isPopupMode ? "tablet-lg:grid-cols-5 xl:grid-cols-6" : "lg:grid-cols-3")}>
               {searchResultFolderCount === 0 ? (
                 <div className="col-span-full flex flex-col items-center justify-center py-12 bg-white/40 dark:bg-white/5 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
                   <span className="material-symbols-outlined text-3xl text-gray-300 dark:text-gray-700 mb-2">search_off</span>
@@ -549,13 +604,9 @@ export default function MyLinksPage() {
                 </div>
               ) : (
                 processedSearchResultFolders.map((folder) => (
-                  <motion.div
-                    key={folder.memberFolderId}
-                    layout="position"
-                    transition={{ type: 'spring', stiffness: 300, damping: 32 }}
-                  >
+                  <div key={folder.memberFolderId} data-flip-id={folder.memberFolderId} data-flip-list="MF">
                     <FolderCard folder={folder} variant={isPopupMode ? 'popup' : 'default'} />
-                  </motion.div>
+                  </div>
                 ))
               )}
             </div>
@@ -565,52 +616,6 @@ export default function MyLinksPage() {
         {/* 검색어 없음 & 필터 미활성화: 기존 대시보드 */}
         {!isShowingFiltered && (
           <>
-            {/* Pinned Folders Top Section - Popup 6 columns / Fixed original 5 columns */}
-            {pinnedFolders.length > 0 && (
-              <div className={cn(isPopupMode ? "mb-5" : "mb-10 sm:mb-5")}>
-                <h2 className={cn("text-xs font-bold text-gray-800 dark:text-gray-100 ml-1", isPopupMode ? "mb-2" : "mb-3")}>Pinned</h2>
-                <div className={cn(
-                  "grid grid-cols-2 gap-2",
-                  isPopupMode ? "sm:grid-cols-3 tablet-lg:grid-cols-6" : "lg:grid-cols-5"
-                )}>
-                  {pinnedFolders.map((folder, idx) => (
-                    <div
-                      key={folder.memberFolderId}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => handleFolderBadgeClick(folder)}
-                      className={cn(
-                        PINNED_COLORS[idx % PINNED_COLORS.length],
-                        isPopupMode
-                          ? "h-[92px] rounded-xl p-3 text-white shadow-md hover:shadow-lg"
-                          : "h-20 rounded-lg p-2.5 text-white",
-                        "flex flex-col justify-between relative overflow-hidden group hover:scale-[1.01] transition-all duration-300 cursor-pointer outline-none",
-                        selectedFolderId === folder.memberFolderId 
-                          ? 'ring-2 ring-inset ring-white/60 dark:ring-white/30 shadow-md scale-[1.02]' 
-                          : 'shadow-sm hover:shadow-md',
-                        folder.folderType === FOLDER_TYPE.UNORGANIZED && "max-sm:hidden"
-                      )}
-                    >
-                      <div className="flex justify-between items-start z-10 w-full gap-1">
-                        <div className={cn("flex items-center justify-center bg-white/20 shrink-0", isPopupMode ? "w-7 h-7 rounded-lg" : "w-8 h-8 rounded-md")}>
-                          <span className={cn("material-symbols-outlined", isPopupMode ? "text-[16px]" : "text-[14px]")}>folder</span>
-                        </div>
-                        <button type="button" className="w-5 h-5 flex items-center justify-center text-white/70 hover:text-white shrink-0">
-                          <span className={cn("material-symbols-outlined", isPopupMode ? "text-[16px]" : "text-[14px]")}>more_vert</span>
-                        </button>
-                      </div>
-                      <div className={cn("z-10 min-w-0 w-full", isPopupMode ? "mt-0.5 space-y-0.5" : "mt-1")}>
-                        <h3 className={cn("font-semibold truncate w-full", isPopupMode ? "text-[11.5px]" : "text-[10.5px] tablet-lg:text-[11.5px]")}>{folder.folderName}</h3>
-                        {isPopupMode && (
-                          <p className="text-[9.5px] font-medium text-white/75">{folder.bookmarkCount} links</p>
-                        )}
-                      </div>
-                      <div className="absolute -right-4 -bottom-4 w-10 h-10 bg-white/10 rounded-full blur-xl group-hover:scale-150 transition-transform duration-500"></div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <div className={cn("flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 mb-3 ml-1 relative z-30", isPopupMode && "mb-3")}>
               <div className="flex items-center gap-2">
@@ -736,7 +741,7 @@ export default function MyLinksPage() {
               </div>
             </div>
 
-            <div className={cn("grid grid-cols-2 gap-2 md:grid-cols-3", isPopupMode ? "tablet-lg:grid-cols-5 xl:grid-cols-6" : "lg:grid-cols-3")}>
+            <div role="group" aria-label="My Folder list" className={cn("grid grid-cols-2 gap-2 md:grid-cols-3", isPopupMode ? "tablet-lg:grid-cols-5 xl:grid-cols-6" : "lg:grid-cols-3")}>
               {/* ── 로딩 상태 ── */}
               {isLoading && (
                 <div className="col-span-full flex items-center justify-center py-8">
@@ -755,23 +760,15 @@ export default function MyLinksPage() {
               {/* ── 데이터 조회가 성공한 경우에만 All Links 및 일반 폴더 카드 렌더링 ── */}
               {!isLoading && !error && folders && (
                 <>
-                  <motion.div
-                    key="all-links"
-                    layout="position"
-                    transition={{ type: 'spring', stiffness: 300, damping: 32 }}
-                  >
+                  <div key="all-links" data-flip-id="-1" data-flip-list="MF">
                     <FolderCard folder={allLinksFolder} variant={isPopupMode ? 'popup' : 'default'} />
-                  </motion.div>
+                  </div>
 
-                  {/* ── 폴더 카드 목록 (백엔드 데이터 반복 렌더링) ── */}
+                  {/* ── 폴더 카드 목록 (고정 폴더는 Pinned에만 표시: 단일 노출) ── */}
                   {processedAllFolders.map((folder) => (
-                    <motion.div
-                      key={folder.memberFolderId}
-                      layout="position"
-                      transition={{ type: 'spring', stiffness: 300, damping: 32 }}
-                    >
+                    <div key={folder.memberFolderId} data-flip-id={folder.memberFolderId} data-flip-list="MF">
                       <FolderCard folder={folder} variant={isPopupMode ? 'popup' : 'default'} />
-                    </motion.div>
+                    </div>
                   ))}
                 </>
               )}

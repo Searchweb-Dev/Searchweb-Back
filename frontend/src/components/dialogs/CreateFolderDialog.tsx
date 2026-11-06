@@ -5,6 +5,9 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useState } from 'react';
 import { useCreateFolder } from '@/lib/api/folderApi';
 import { useAuthStore } from '@/lib/store/authStore';
+import { useQueryClient } from '@tanstack/react-query';
+import { ApiError } from '@/lib/api/fetchClient';
+import { showToast } from '@/lib/store/toastStore';
 
 const COLORS = [
   { id: 'purple', base: 'bg-purple-500 hover:ring-purple-500', active: 'ring-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]' },
@@ -27,11 +30,19 @@ export function CreateFolderDialog() {
   const [folderName, setFolderName] = useState('');             // 폴더 이름
   const [selectedIcon, setSelectedIcon] = useState('work');     // 선택된 아이콘 이름
   const [selectedColor, setSelectedColor] = useState('purple'); // 선택된 색상 ID
-  const [isPinned, setIsPinned] = useState(true);               // 상단 고정 여부
+  const [isPinned, setIsPinned] = useState(false);
+  const [previousOpen, setPreviousOpen] = useState(createFolderDialogOpen);
+  // Reset before rendering a new open/closed session, including store-driven closes
+  // that do not call Radix onOpenChange. Failed submissions leave open unchanged.
+  if (previousOpen !== createFolderDialogOpen) {
+    setPreviousOpen(createFolderDialogOpen);
+    setIsPinned(false);
+  }
   const memberId = useAuthStore((s) => s.member?.memberId);
 
   // 폴더 생성 API 연동 (React Query Mutation)
   const createFolderMutation = useCreateFolder();
+  const queryClient = useQueryClient();
 
 
   /**
@@ -46,19 +57,35 @@ export function CreateFolderDialog() {
       {
         ownerMemberId: memberId,
         folderName: folderName.trim(),
+        pinned: isPinned,
       },
       {
         // 성공 시 후처리
         onSuccess: () => {
           toggleCreateFolderDialog(false); // 창 닫기
           setFolderName('');               // 입력값 초기화
+          setIsPinned(false);
+        },
+        // 실패 시 성공 표시 금지: 다이얼로그 유지 + 에러 토스트 (AC-01c/12a)
+        onError: async (error) => {
+          if (error instanceof ApiError) {
+            showToast('폴더 생성에 실패했습니다. 다시 시도해 주세요.', 'error');
+          } else {
+            // 결과 불명확: 계정별 목록·pinned 재조회가 완료된 뒤 확인 요청 (AC-12b).
+            try {
+              await queryClient.invalidateQueries({ queryKey: ['folders'] }, { throwOnError: true });
+              showToast('생성 결과가 불명확합니다. 새로 불러온 목록을 확인한 뒤 다시 시도해 주세요.', 'error');
+            } catch {
+              showToast('생성 결과와 목록을 확인하지 못했습니다. 연결 복구 후 다시 확인해 주세요.', 'error');
+            }
+          }
         },
       }
     );
   };
 
   return (
-    <Dialog open={createFolderDialogOpen} onOpenChange={toggleCreateFolderDialog}>
+    <Dialog open={createFolderDialogOpen} onOpenChange={(open) => { if (!open) setIsPinned(false); toggleCreateFolderDialog(open); }}>
       <DialogContent className="max-tablet-lg:!top-auto max-tablet-lg:!bottom-0 max-tablet-lg:!translate-y-0 max-sm:!max-w-full sm:max-w-md max-tablet-lg:max-w-md max-sm:px-0 sm:px-4 max-tablet-lg:px-4 max-tablet-lg:!rounded-t-3xl max-sm:!rounded-b-none sm:rounded-[16px] max-tablet-lg:rounded-[16px] max-tablet-lg:border-x-0 max-tablet-lg:border-b-0 max-tablet-lg:pb-8 tablet-lg:max-w-md bg-white dark:bg-[#0a0a0b] tablet-lg:rounded-[16px] shadow-2xl p-0 overflow-hidden border border-gray-100 dark:border-white/[0.08] !gap-0 [&>button]:hidden max-tablet-lg:data-[state=open]:!slide-in-from-bottom-full max-tablet-lg:data-[state=closed]:!slide-out-to-bottom-full max-tablet-lg:data-[state=open]:!zoom-in-100 max-tablet-lg:data-[state=closed]:!zoom-out-100 duration-300">
         
         {/* Mobile Drag Handle Indicator */}
@@ -149,22 +176,15 @@ export function CreateFolderDialog() {
                 <label className="text-sm font-semibold text-gray-700 dark:text-gray-200">Pin Settings</label>
               </div>
               <div className="bg-gray-50/50 dark:bg-gray-800/40 rounded-xl p-4 border border-gray-200 dark:border-gray-700 relative overflow-hidden">
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/10 dark:bg-black/10 backdrop-blur-[0.5px]">
-                  <div className="px-3 py-1.5 rounded-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border border-purple-500/30 shadow-lg shadow-purple-500/10 flex items-center gap-1.5 transform hover:scale-105 transition-transform duration-300">
-                    <span className="material-symbols-outlined text-purple-600 dark:text-purple-400 !text-[14px]">lock</span>
-                    <span className="text-[10px] font-bold text-gray-800 dark:text-gray-200 tracking-tight">Coming soon!</span>
-                  </div>
-                </div>
-
-                {/* Content partially visible */}
-                <div className="opacity-30 pointer-events-none select-none">
-                  {/* 상단 고정 토글 */}
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Pin to Top</span>
-                    <div className="relative inline-flex h-5 w-9 items-center rounded-full bg-gray-300 dark:bg-gray-600">
-                      <span className="translate-x-[2px] inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"></span>
-                    </div>
+                    <button type="button" role="switch" aria-label="Pin to Top" aria-checked={isPinned} onClick={() => setIsPinned(v => !v)}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full focus-visible:ring-2 focus-visible:ring-purple-500 ${isPinned ? 'bg-purple-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                      <span className={`${isPinned ? 'translate-x-4' : 'translate-x-[2px]'} inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform`}></span>
+                    </button>
                   </div>
+                  {/* 테마 색상 선택 (비활성) */}
+                  <div className="opacity-30 pointer-events-none select-none">
                   {/* 테마 색상 선택 */}
                   <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                     <p className="text-xs text-gray-500 mb-3 font-medium">Select Color</p>

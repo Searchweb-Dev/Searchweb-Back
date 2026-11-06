@@ -11,6 +11,33 @@ async function fetchRootFolders(ownerMemberId: number): Promise<FolderResponse[]
   return fetchClient<FolderResponse[]>(`/api/folders/owners/${ownerMemberId}/root`);
 }
 
+export function usePinnedFolders(ownerMemberId: number | undefined) {
+  return useQuery({
+    queryKey: ['folders', 'pinned', ownerMemberId],
+    queryFn: () => fetchClient<FolderResponse[]>('/api/folders/me/pinned'),
+    enabled: ownerMemberId != null,
+  });
+}
+
+export function useSetFolderPinned(ownerMemberId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ folderId, pinned }: { folderId: number; pinned: boolean }) =>
+      fetchClient<FolderResponse>(`/api/folders/${folderId}/pinned`, {
+        method: 'PATCH', body: JSON.stringify({ pinned }),
+      }),
+    onSuccess: (confirmed) => {
+      queryClient.setQueryData<FolderResponse[]>(['folders', 'root', ownerMemberId], old =>
+        old?.map(folder => folder.memberFolderId === confirmed.memberFolderId ? confirmed : folder));
+      queryClient.setQueryData<FolderResponse[]>(['folders', 'pinned', ownerMemberId], old => old &&
+        (confirmed.pinned ? [...old.filter(f => f.memberFolderId !== confirmed.memberFolderId), confirmed]
+          : old.filter(f => f.memberFolderId !== confirmed.memberFolderId)));
+      queryClient.invalidateQueries({ queryKey: ['folders', 'root', ownerMemberId] });
+      queryClient.invalidateQueries({ queryKey: ['folders', 'pinned', ownerMemberId] });
+    },
+  });
+}
+
 /**
  * 새로운 폴더를 생성합니다.
  * POST /api/folders
