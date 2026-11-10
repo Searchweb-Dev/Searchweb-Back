@@ -56,6 +56,17 @@ test('two copies of the same folder anchor to the clicked instance; one menu and
   expect(screen.queryByRole('menu')).toBeNull();
   expect(second).toHaveFocus();
 });
+test('Tab closes the portaled menu and returns focus to its trigger without blocking default Tab', () => {
+  mount();
+  const button = trigger();
+  fireEvent.click(button);
+  const menu = screen.getByRole('menu');
+  expect(menu).toContainElement(document.activeElement as HTMLElement);
+  // fireEvent returns false only when preventDefault() was called.
+  expect(fireEvent.keyDown(menu, { key: 'Tab' })).toBe(true);
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(button).toHaveFocus();
+});
 test('outside click closes; scroll and resize recalculate the actual trigger', () => {
   mount();
   const button = trigger();

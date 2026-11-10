@@ -31,7 +31,16 @@ export function prefersReducedMotion() {
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-const swallow = (event: Event) => {
+const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+
+/**
+ * Activation blocker for a moving root: only clicks / Enter / Space aimed at non-editable targets
+ * inside `root` are cancelled. Typing in the search field and controls outside the root
+ * (dialogs, toasts) keep working while cards travel.
+ */
+const makeSwallow = (root: HTMLElement) => (event: Event) => {
+  const target = event.target;
+  if (!(target instanceof Element) || !root.contains(target) || target.closest(EDITABLE)) return;
   if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -187,6 +196,7 @@ export function useFlipLayout(rootRef: RefObject<HTMLElement | null>) {
     }
     // Block clicks/activation while cards travel so rapid Pin/Unpin cannot interleave moves.
     if (!stopBlocking.current) {
+      const swallow = makeSwallow(root);
       document.addEventListener('click', swallow, true);
       document.addEventListener('keydown', swallow, true);
       stopBlocking.current = () => {

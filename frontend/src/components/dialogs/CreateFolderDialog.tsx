@@ -31,6 +31,8 @@ export function CreateFolderDialog() {
   const [selectedIcon, setSelectedIcon] = useState('work');     // 선택된 아이콘 이름
   const [selectedColor, setSelectedColor] = useState('purple'); // 선택된 색상 ID
   const [isPinned, setIsPinned] = useState(false);
+  // 결과 불명확 후 목록 재조회 중: mutation은 끝났지만 재제출 시 중복 생성 위험 (AC-12b)
+  const [isVerifying, setIsVerifying] = useState(false);
   const [previousOpen, setPreviousOpen] = useState(createFolderDialogOpen);
   // Reset before rendering a new open/closed session, including store-driven closes
   // that do not call Radix onOpenChange. Failed submissions leave open unchanged.
@@ -50,7 +52,7 @@ export function CreateFolderDialog() {
    */
   const handleCreateFolder = () => {
     // 유효성 검사: 이름이 비어있으면 중단
-    if (!folderName.trim() || !memberId) return;
+    if (!folderName.trim() || !memberId || isVerifying) return;
 
     // API 호출
     createFolderMutation.mutate(
@@ -72,11 +74,14 @@ export function CreateFolderDialog() {
             showToast('폴더 생성에 실패했습니다. 다시 시도해 주세요.', 'error');
           } else {
             // 결과 불명확: 계정별 목록·pinned 재조회가 완료된 뒤 확인 요청 (AC-12b).
+            setIsVerifying(true);
             try {
               await queryClient.invalidateQueries({ queryKey: ['folders'] }, { throwOnError: true });
               showToast('생성 결과가 불명확합니다. 새로 불러온 목록을 확인한 뒤 다시 시도해 주세요.', 'error');
             } catch {
               showToast('생성 결과와 목록을 확인하지 못했습니다. 연결 복구 후 다시 확인해 주세요.', 'error');
+            } finally {
+              setIsVerifying(false);
             }
           }
         },
@@ -216,7 +221,7 @@ export function CreateFolderDialog() {
           <button
             type="button"
             onClick={handleCreateFolder}
-            disabled={!folderName.trim() || createFolderMutation.isPending} // 이름이 없거나 생성 중이면 비활성화
+            disabled={!folderName.trim() || createFolderMutation.isPending || isVerifying} // 이름이 없거나 생성·결과 재조회 중이면 비활성화
             className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-semibold shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed max-tablet-lg:w-full max-tablet-lg:text-center max-tablet-lg:py-3.5 max-tablet-lg:text-[15px]"
           >
             {createFolderMutation.isPending ? 'Creating...' : 'Create Folder'}

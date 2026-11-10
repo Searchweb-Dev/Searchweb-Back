@@ -96,6 +96,33 @@ test('clicks are swallowed while cards are moving and work again after the move 
   expect(onClick).toHaveBeenCalledTimes(1);
 });
 
+test('blocking is limited to non-editable targets inside the animated root', async () => {
+  const outside = jest.fn();
+  const typed = jest.fn();
+  function WithControls({ items }: { items: Item[] }) {
+    const root = useRef<HTMLDivElement>(null);
+    useFlipLayout(root);
+    return <>
+      <div ref={root} data-flip-root="">
+        <input aria-label="search" onKeyDown={event => typed(event.key)} />
+        <div>{items.filter(i => i.list === 'P').map(i => <div key={i.id} data-flip-id={i.id} data-flip-list="P"><button type="button">{i.id}</button></div>)}</div>
+        <div>{items.filter(i => i.list === 'MF').map(i => <div key={i.id} data-flip-id={i.id} data-flip-list="MF"><button type="button">{`open ${i.id}`}</button></div>)}</div>
+      </div>
+      <button type="button" onClick={outside}>outside</button>
+    </>;
+  }
+  const { rerender, getByText, getByLabelText } = render(<WithControls items={before} />);
+  rerender(<WithControls items={pinnedB} />);
+  // Cards inside the root are still blocked while moving.
+  expect(fireEvent.keyDown(getByText('open a'), { key: 'Enter' })).toBe(false);
+  // Controls outside the root (dialogs, toasts) and editable fields inside it keep working.
+  fireEvent.click(getByText('outside'));
+  expect(outside).toHaveBeenCalledTimes(1);
+  expect(fireEvent.keyDown(getByLabelText('search'), { key: ' ' })).toBe(true);
+  expect(typed).toHaveBeenCalledWith(' ');
+  await act(async () => { finish(); await Promise.resolve(); await Promise.resolve(); });
+});
+
 // ── Pinned scroll area (max two rows, clipped) ──────────────────────────────
 // P cards wrap two per row inside a clip box (top 0..176, inner pad 4, rows of 80 + gap 8).
 // MF cards sit on a row at y=300. The clip's scrollTop shifts P cards upward.

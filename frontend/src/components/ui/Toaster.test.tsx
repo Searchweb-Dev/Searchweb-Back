@@ -20,6 +20,14 @@ test('failure toast is announced and can be dismissed independently of a folder 
   expect(screen.queryByRole('alert')).toBeNull();
 });
 
+test('container does not override each toast role with an assertive live region', () => {
+  render(<Toaster />);
+  act(() => { showToast('서버 상태를 다시 확인했습니다.', 'info'); });
+  const status = screen.getByRole('status');
+  expect(status.parentElement).not.toHaveAttribute('aria-live');
+  expect(status.closest('[aria-live="assertive"]')).toBeNull();
+});
+
 test('informational toast expires after five seconds', () => {
   render(<Toaster />);
   act(() => { showToast('서버 상태를 다시 확인했습니다.', 'info'); });

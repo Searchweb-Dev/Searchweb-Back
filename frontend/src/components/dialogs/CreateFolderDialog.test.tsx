@@ -86,6 +86,22 @@ test('unknown create outcome re-queries folders and pinned, no success shown (AC
   expect(screen.getByLabelText('Folder Name')).toHaveValue('New');
 });
 
+test.each(['resolves', 'rejects'])('unknown create outcome keeps Create disabled until the refresh %s', async (outcome) => {
+  let settle!: () => void;
+  invalidateQueries.mockReturnValue(new Promise<void>((resolve, reject) => {
+    settle = outcome === 'resolves' ? resolve : () => reject(new TypeError('offline'));
+  }));
+  mutate.mockImplementation((_v, opts) => { void opts.onError(new TypeError('network')); });
+  openAndSubmit();
+  const create = screen.getByRole('button', { name: 'Create Folder' });
+  await waitFor(() => expect(create).toBeDisabled());
+  fireEvent.click(create);
+  expect(mutate).toHaveBeenCalledTimes(1);
+  await act(async () => { settle(); });
+  await waitFor(() => expect(create).toBeEnabled());
+  expect(useToastStore.getState().toasts).toHaveLength(1);
+});
+
 test('unknown create outcome waits for refresh and does not claim a failed refresh succeeded', async () => {
   let rejectRefresh!: (reason: Error) => void;
   invalidateQueries.mockReturnValue(new Promise<void>((_resolve, reject) => { rejectRefresh = reject; }));

@@ -109,7 +109,9 @@ export function FolderMenu({ folder, pinnedCard = false }: { folder: FolderRespo
             : (current + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
           items[index]?.focus();
         }
-        if (event.key === 'Tab') close(false);
+        // Restore focus to the trigger (no preventDefault): the default Tab then moves past the trigger
+        // instead of leaving the body-level portal for the document start or browser UI.
+        if (event.key === 'Tab') close();
       }}>
       <button type="button" role="menuitem" className={`${rowClass} text-gray-700 hover:bg-purple-50 dark:text-white dark:hover:bg-purple-600/20`}
         onClick={() => { close(false); setModal('edit'); }}>
