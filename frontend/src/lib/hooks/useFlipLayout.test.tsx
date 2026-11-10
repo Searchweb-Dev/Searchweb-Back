@@ -240,5 +240,6 @@ test('a second change during a move cancels the running animations instead of st
   rerender(<Lists items={pinnedB} />);
   const first = animate.mock.results.map(r => r.value as { cancel: jest.Mock });
   rerender(<Lists items={before} />);
-  expect(first.every(a => a.cancel.mock.calls.length > 0 || a === undefined)).toBe(true);
+  expect(first.length).toBeGreaterThan(0);
+  for (const a of first) expect(a.cancel).toHaveBeenCalled();
 });
