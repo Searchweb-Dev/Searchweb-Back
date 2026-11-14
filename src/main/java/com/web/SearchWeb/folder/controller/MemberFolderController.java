@@ -68,6 +68,7 @@ public class MemberFolderController {
             .map(MemberFolderResponses::from).collect(Collectors.toList())));
     }
 
+    // 폴더 고정 상태 변경
     @PatchMapping("/{folderId}/pinned")
     public ResponseEntity<ApiResponse<MemberFolderResponses>> setPinned(@CurrentMemberId Long memberId,
         @PathVariable Long folderId, @Valid @RequestBody MemberFolderRequests.Pin req) {

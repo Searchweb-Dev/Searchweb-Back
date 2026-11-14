@@ -52,6 +52,9 @@ public class MemberFolderRequests {
         public Long newParentFolderId;
     }
 
+    /**
+     * 폴더 고정 상태 변경 요청
+     */
     @Getter
     @NoArgsConstructor
     public static class Pin {
