@@ -4,7 +4,7 @@
 > - **버전:** v0.1.0 (Draft)
 > - **작성일:** 2026-04-18
 > - **관련 화면:** `/my-links`, `SaveLinkDialog`
-> - **관련 문서:** [SearchWeb PRD](./01.%20searchweb_PRD.md), [My Links 검색 기능 계획서](./03.%20my-links_search_feature_plan.md)
+- **관련 문서:** [SearchWeb PRD](../../Searchweb_PRD.md), [My Links 검색 기능 계획서](../my-links-search/spec.md)
 > - **문서 목적:** "미분류" 개념을 **시스템 폴더(`folder_type='UNORGANIZED'`)** 로 정의하고, 이를 도입하기 위한 데이터 모델·서비스·UI 변경 사항을 정의한다.
 
 <br>

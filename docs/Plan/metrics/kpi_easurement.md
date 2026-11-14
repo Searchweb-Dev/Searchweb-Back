@@ -3,7 +3,7 @@
 > **문서 정보**
 > - **버전:** v1.0.0
 > - **작성일:** 2026-02-22
-> - **근거 문서:** [searchweb_PRD.md](file:///e:/01.%20spring_projcet/SearchWeb/docs/Plan/searchweb_PRD.md)
+> - **근거 문서:** [SearchWeb PRD](../Searchweb_PRD.md)
 > - **문서 목적:** PRD에 정의된 KPI를 실제로 측정하기 위한 이벤트 로그 수집/산출 체계 설계
 
 <br>
