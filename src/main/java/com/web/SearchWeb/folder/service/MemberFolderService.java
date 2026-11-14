@@ -6,6 +6,12 @@ import java.util.List;
 public interface MemberFolderService {
 
     Long create(Long memberId, Long parentFolderId, String folderName, String description);
+    /** 폴더 생성 (고정 여부 지정, 루트 폴더만 고정 가능) */
+    Long create(Long memberId, Long parentFolderId, String folderName, String description, boolean pinned);
+    /** 폴더 고정 상태 변경 (루트 폴더만 고정 가능) */
+    MemberFolder setPinned(Long memberId, Long folderId, boolean pinned);
+    /** 회원의 고정된 루트 폴더 목록 조회 */
+    List<MemberFolder> listPinned(Long memberId);
 
     MemberFolder get(Long memberId, Long memberFolderId);
 

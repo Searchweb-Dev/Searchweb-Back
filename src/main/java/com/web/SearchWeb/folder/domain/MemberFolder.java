@@ -45,6 +45,11 @@ public class MemberFolder extends BaseEntity {
     @Column(name = "folder_type", nullable = false, length = 20)
     @Builder.Default
     private FolderType folderType = FolderType.CUSTOM;
+    @Builder.Default
+    @Column(name = "is_pinned", nullable = false)
+    private boolean pinned = false;
+
+    public void setPinned(boolean pinned) { this.pinned = pinned; }
 
     @Formula("(SELECT COUNT(*) FROM member_saved_link msl WHERE msl.member_folder_id = member_folder_id AND msl.deleted_at IS NULL)")
     private Integer bookmarkCount;

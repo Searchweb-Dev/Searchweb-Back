@@ -36,6 +36,16 @@ public class MemberFolderServiceImpl implements MemberFolderService {
     @Override
     @Transactional
     public Long create(Long memberId, Long parentFolderId, String folderName, String description) {
+        return create(memberId, parentFolderId, folderName, description, false);
+    }
+
+
+    // 폴더 생성
+    @Override
+    @Transactional
+    public Long create(Long memberId, Long parentFolderId, String folderName, String description, boolean pinned) {
+        // 고정(pinned)은 루트 폴더에만 설정 가능 (하위 폴더 지정 시 예외)
+        if (pinned && parentFolderId != null) throw new FolderException(FolderErrorCode.INVALID_PIN_TARGET);
         String normalizedFolderName = normalizeFolderName(folderName);
         String normalizedDescription = normalizeDescription(description);
 
@@ -70,10 +80,54 @@ public class MemberFolderServiceImpl implements MemberFolderService {
             .folderName(normalizedFolderName)
             .description(normalizedDescription)
             .createdByMemberId(memberId)
+            .pinned(pinned)
             .build();
 
         return memberFolderJpaRepository.save(folder).getMemberFolderId();
     }
+
+
+    // 폴더 고정 상태 변경
+    @Override
+    @Transactional
+    public MemberFolder setPinned(Long memberId, Long folderId, boolean pinned) {
+        // 1. 비관적 락(PESSIMISTIC_WRITE)으로 폴더 조회
+        MemberFolder folder = memberFolderJpaRepository.findByIdForUpdate(folderId)
+            .orElseThrow(() -> new FolderException(FolderErrorCode.FOLDER_NOT_FOUND));
+            
+        if (folder.isDeleted()) throw new FolderException(FolderErrorCode.FOLDER_NOT_FOUND);
+
+        // 2. 폴더 소유자 검증
+        validateOwner(memberId, folder.getOwnerMemberId());
+
+        // 3. 고정 대상 검증 (루트 폴더 및 CUSTOM / UNORGANIZED 타입만 고정 가능)
+        if (folder.getParentFolderId() != null || !isPinnableType(folder.getFolderType())) {
+            throw new FolderException(FolderErrorCode.INVALID_PIN_TARGET);
+        }
+
+        // 4. 고정 상태 갱신
+        folder.setPinned(pinned);
+        return folder;
+    }
+
+
+    // 고정된 루트 폴더 목록 조회
+    @Override
+    @Transactional(readOnly = true)
+    public List<MemberFolder> listPinned(Long memberId) {
+        // 루트 폴더 중 고정(pinned)되어 있고 유효한 타입(CUSTOM, UNORGANIZED)만 필터링하여 반환
+        // 메서드 참조(MemberFolder::isPinned) 대신 람다 사용: Eclipse JDT null 분석 경고 회피
+        return listRootFolders(memberId, memberId).stream()
+            .filter(f -> f.isPinned() && isPinnableType(f.getFolderType()))
+            .collect(Collectors.toList());
+    }
+
+
+    // 고정 가능한 폴더 타입 여부 (새 타입 추가 시 기본적으로 고정 불가)
+    private static boolean isPinnableType(FolderType type) {
+        return type == FolderType.CUSTOM || type == FolderType.UNORGANIZED;
+    }
+
 
     private String normalizeFolderName(String folderName) {
         if (folderName == null) {

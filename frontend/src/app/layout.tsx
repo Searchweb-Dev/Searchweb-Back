@@ -10,6 +10,7 @@ import { QueryProvider } from "@/components/providers/QueryProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 
 import { AgentationProvider } from "@/components/providers/AgentationProvider";
+import { Toaster } from "@/components/ui/Toaster";
 import { SITE_URL } from "@/lib/config/site";
 
 const gtmId = process.env.NEXT_PUBLIC_GTM_ID?.trim();
@@ -55,6 +56,7 @@ export default function RootLayout({
             </AuthProvider>
             <SaveLinkDialog />
             <CreateFolderDialog />
+            <Toaster />
             <AgentationProvider />
           </QueryProvider>
         </ThemeProvider>

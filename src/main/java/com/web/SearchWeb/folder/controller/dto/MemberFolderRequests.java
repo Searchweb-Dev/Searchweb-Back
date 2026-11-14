@@ -25,6 +25,7 @@ public class MemberFolderRequests {
 
         @Size(max = 200, message = "description은 최대 200자까지 가능합니다.")
         public String description;
+        public Boolean pinned;
     }
 
     /**
@@ -49,5 +50,15 @@ public class MemberFolderRequests {
         // null이면 루트로 이동
         @Positive(message = "newParentFolderId는 양수여야 합니다.")
         public Long newParentFolderId;
+    }
+
+    /**
+     * 폴더 고정 상태 변경 요청
+     */
+    @Getter
+    @NoArgsConstructor
+    public static class Pin {
+        @jakarta.validation.constraints.NotNull
+        public Boolean pinned;
     }
 }

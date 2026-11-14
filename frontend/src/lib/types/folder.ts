@@ -17,6 +17,7 @@ export interface FolderResponse {
   description: string | null;
   folderType: FolderType;
   bookmarkCount: number;
+  pinned: boolean;
 }
 
 // POST /api/folders 요청 바디
@@ -25,6 +26,7 @@ export interface CreateFolderRequest {
   parentFolderId?: number | null;
   folderName: string;
   description?: string;
+  pinned?: boolean;
 }
 
 // PUT /api/folders/{folderId} 요청 바디
